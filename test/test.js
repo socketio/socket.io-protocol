@@ -4,20 +4,29 @@ var expect = require('expect.js');
 var encode = parser.encode;
 var decode = parser.decode;
 
-// tests encoding and decoding a packet
+// tests encoding and decoding a single packet
 
 function test(obj){
-  encode(obj, function(encodedPacket) {
-    expect(decode(encodedPacket)).to.eql(obj);
+  encode(obj, function(encodedPackets) {
+    expect(decode(encodedPackets[0])).to.eql(obj);
   });
 }
 
-// array buffer's slice is native code that is not transported across
-// socket.io via msgpack, so regular .eql fails
-function testArrayBuffers(buf1, buf2) {
-  buf1.slice = undefined;
-  buf2.slice = undefined;
-  expect(buf1).to.eql(buf2);
+function test_bin(obj) {
+  var originalData = obj.data;
+  encode(obj, function(encodedPackets) {
+    var reconPack = decode(encodedPackets[0]);
+
+    var reconstructor = new parser.BinaryReconstructor(reconPack);
+    var packet;
+    for (var i = 1; i < encodedPackets.length; i++) {
+      packet = reconstructor.takeBinaryData(encodedPackets[i]);
+    }
+
+    obj.data = originalData;
+    obj.attachments = undefined;
+    expect(obj).to.eql(packet);
+  });
 }
 
 function testPacketMetadata(p1, p2) {
@@ -74,7 +83,7 @@ describe('parser', function(){
   });
 
   it('encodes a Buffer', function() {
-    test({
+    test_bin({
       type: parser.BINARY_EVENT,
       data: new Buffer('abc', 'utf8'),
       id: 23,
@@ -89,27 +98,17 @@ describe('parser', function(){
       id: 0,
       nsp: '/'
     };
-    parser.encode(packet, function(encodedData) {
-      var decodedPacket = parser.decode(encodedData);
-      testPacketMetadata(packet, decodedPacket);
-      testArrayBuffers(packet.data, decodedPacket.data);
-    });
+    test_bin(packet);
   });
 
-  it('encodes an ArrayBuffer deep in JSON', function() {
+  it('encodes ArrayBuffers deep in JSON', function() {
     var packet = {
       type: parser.BINARY_EVENT,
-      data: {a: 'hi', b: {why: new ArrayBuffer(3)}, c:'bye'},
+      data: {a: 'hi', b: {why: new ArrayBuffer(3)}, c: {a: 'bye', b: { a: new ArrayBuffer(6)}}},
       id: 999,
       nsp: '/deep'
     };
-    parser.encode(packet, function(encodedData) {
-      var decodedPacket = parser.decode(encodedData);
-      testPacketMetadata(packet, decodedPacket);
-      expect(packet.data.a).to.eql(decodedPacket.data.a);
-      expect(packet.data.c).to.eql(decodedPacket.data.c);
-      testArrayBuffers(packet.data.b.why, decodedPacket.data.b.why);
-    });
+    test_bin(packet);
   });
 
 });
