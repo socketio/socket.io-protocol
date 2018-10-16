@@ -3,9 +3,9 @@
 
   This document describes the Socket.IO protocol. For a reference JavaScript
   implementation, take a look at
-  [socket.io-parser](https://github.com/learnboost/socket.io-parser),
-  [socket.io-client](https://github.com/learnboost/socket.io-client)
-  and [socket.io](https://github.com/learnboost/socket.io).
+  [socket.io-parser][socket.io-parser],
+  [socket.io-client][socket.io-client]
+  and [socket.io][socker.io].
 
 ## Protocol version
 
@@ -121,13 +121,13 @@
 ## Transport
 
   The socket.io protocol can be delivered over a variety of transports.
-  [socket.io-client](http://github.com/learnboost/socket.io-client)
+  [socket.io-client][socket.io-client]
   is the implementation of the protocol for the browser and Node.JS over
-  [engine.io-client](http://github.com/learnboost/engine.io-client).
+  [engine.io-client][engine.io-client].
 
-  [socket.io](http://github.com/learnboost/socket.io) is the server
+  [socket.io][socker.io] is the server
   implementation of the protocol over
-  [engine.io](http://github.com/learnboost/engine.io).
+  [engine.io][engine.io].
 
 ## Multiplexing
 
@@ -159,3 +159,9 @@
 ## License
 
 MIT
+
+[socket.io-client]: https://github.com/socketio/socket.io-client
+[socket.io-parser]: https://github.com/socketio/socket.io-parser
+[socker.io]: http://github.com/socketio/socket.io
+[engine.io-client]: http://github.com/socketio/engine.io-client
+[engine.io]: http://github.com/socketio/engine.io
