@@ -10,24 +10,7 @@ This document describes the 5th version of the Socket.IO protocol.
   - [Sending and receiving data](#sending-and-receiving-data)
   - [Acknowledgement](#acknowledgement)
   - [Disconnection from a namespace](#disconnection-from-a-namespace)
-  
-
-
-
-- [Protocol version](#protocol-version)
-- [Packet format](#packet-format)
-  - [Packet types](#packet-types)
-    - [CONNECT](#0---connect)
-    - [DISCONNECT](#1---disconnect)
-    - [EVENT](#2---event)
-    - [ACK](#3---ack)
-    - [CONNECT_ERROR](#4---connect_error)
-    - [BINARY_EVENT](#5---binary_event)
-    - [BINARY_ACK](#6---binary_ack)
 - [Packet encoding](#packet-encoding)
-  - [Encoding format](#encoding-format)
-  - [Examples](#examples)
-
 - [Sample session](#sample-session)
 - [History](#history)
   - [Difference between v5 and v4](#difference-between-v5-and-v4)
@@ -46,7 +29,7 @@ It is built on top of the [Engine.IO protocol](https://github.com/socketio/engin
 
 The Socket.IO protocol adds the following features:
 
-- multiplexing (referred as [namespace](https://socket.io/docs/v4/namespaces) in the Socket.IO jargon)
+- multiplexing (referred as ["namespace"](https://socket.io/docs/v4/namespaces) in the Socket.IO jargon)
 
 Example with the JavaScript API:
 
@@ -127,8 +110,6 @@ The server MUST respond with either:
 - a `CONNECT` packet if the connection is successful, with the session ID in the payload
 - or a `CONNECT_ERROR` packet if the connection is not allowed
 
-If the server does not receive a `CONNECT` packet first, then it MUST close the connection immediately.
-
 ```
 CLIENT                                                      SERVER
 
@@ -137,6 +118,10 @@ CLIENT                                                      SERVER
   │  ◄───────────────────────────────────────────────────────  │
   │   { type: CONNECT, namespace: "/", data: { sid: "..." } }  │
 ```
+
+If the server does not receive a `CONNECT` packet first, then it MUST close the connection immediately.
+
+A client MAY be connected to multiple namespaces at the same time, with the same underlying WebSocket connection.
 
 Examples:
 
@@ -170,7 +155,7 @@ Server > { type: CONNECT_ERROR, namespace: "/", data: { message: "Not authorized
 
 ### Sending and receiving data
 
-Once the [connection to a namespace](#connection-to-a-namespace) is established, the client and the server can exchange data:
+Once the [connection to a namespace](#connection-to-a-namespace) is established, the client and the server can begin exchanging data:
 
 ```
 CLIENT                                                      SERVER
@@ -258,7 +243,7 @@ At any time, one side can end the connection to a namespace by sending a `DISCON
 CLIENT                                                      SERVER
 
   │  ───────────────────────────────────────────────────────►  │
-  │        { type: DISCONNECT, namespace: "/" }                │
+  │           { type: DISCONNECT, namespace: "/" }             │
 ```
 
 No response is expected from the other side. The low-level connection MAY be kept alive if the client is connected to another namespace.
@@ -269,15 +254,15 @@ No response is expected from the other side. The low-level connection MAY be kep
 This section details the encoding used by the default parser which is included in Socket.IO server and client, and
 whose source can be found [here](https://github.com/socketio/socket.io-parser).
 
-The JS server and client implementations also supports custom parsers, which have different tradeoffs and may benefit to
-certain kind of applications. Please see [socket.io-json-parser](https://github.com/darrachequesne/socket.io-json-parser)
-or [socket.io-msgpack-parser](https://github.com/darrachequesne/socket.io-msgpack-parser) for example.
+The JavaScript server and client implementations also supports custom parsers, which have different tradeoffs and may benefit to
+certain kind of applications. Please see [socket.io-json-parser](https://github.com/socketio/socket.io-json-parser)
+or [socket.io-msgpack-parser](https://github.com/socketio/socket.io-msgpack-parser) for example.
 
 Please also note that each Socket.IO packet is sent as a Engine.IO `message` packet (more information [here](https://github.com/socketio/engine.io-protocol)),
-so the encoded result will be prefixed by `4` when sent over the wire (in the request/response body with HTTP
+so the encoded result will be prefixed by `"4"` when sent over the wire (in the request/response body with HTTP
 long-polling, or in the WebSocket frame).
 
-### Encoding format
+Encoding format:
 
 ```
 <packet type>[<# of binary attachments>-][<namespace>,][<acknowledgment id>][JSON-stringified payload without binary]
@@ -285,140 +270,53 @@ long-polling, or in the WebSocket frame).
 + binary attachments extracted
 ```
 
-Note:
+Note: the namespace is only included if it is different from the main namespace (`/`)
 
-- the namespace is only included if it is different from the main namespace (`/`)
+Examples:
 
-### Examples
+- connection to a namespace
 
-- `CONNECT` packet for the main namespace
+| Packet                                                                          | Encoded                                  |
+|---------------------------------------------------------------------------------|------------------------------------------|
+| `{ type: CONNECT, namespace: "/" }`                                             | `0`                                      |
+| `{ type: CONNECT, namespace: "/", data: { sid: "wZX3oN0bSVIhsaknAAAI" } }`      | `0{"sid":"wZX3oN0bSVIhsaknAAAI"}`        |
+| `{ type: CONNECT, namespace: "/admin" }`                                        | `0/admin,`                               |
+| `{ type: CONNECT, namespace: "/admin", data: { sid: "oSO0OpakMV_3jnilAAAA" } }` | `0/admin,{"sid":"oSO0OpakMV_3jnilAAAA"}` |
+| `{ type: CONNECT_ERROR, namespace: "/", data: { message: "Not authorized" } }`  | `4{"message":"Not authorized"}`          |
 
-```json
-{
-  "type": 0,
-  "nsp": "/",
-  "data": {
-    "token": "123"
-  }
-}
-```
+- sending and receiving data
 
-is encoded to `0{"token":"123"}`
+| Packet                                                                                            | Encoded                                                                                                                             |
+|---------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `{ type: EVENT, namespace: "/", data: ["foo"] }`                                                  | `2["foo"]`                                                                                                                          |
+| `{ type: EVENT, namespace: "/admin", data: ["bar"] }`                                             | `2/admin,["bar"]`                                                                                                                   |
+| `{ type: BINARY_EVENT, namespace: "/", data: ["baz", <Buffer <01 02 03 04>> ] }`                  | `51-["baz",{"_placeholder":true,"num":0}]` <br/>+ `<Buffer <01 02 03 04>>`                                                          |
+| `{ type: BINARY_EVENT, namespace: "/admin", data: ["baz", <Buffer <01 02>>, <Buffer <03 04>> ] }` | `52-/admin,["baz",{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]` <br/>+ `<Buffer <01 02>>` <br/>+ `<Buffer <03 04>>` |
 
-- `CONNECT` packet for the `/admin` namespace
+Again, each Socket.IO packet is wrapped in a Engine.IO `message` packet, so they will be prefixed by `"4"` when sent over the wire.
 
-```json
-{
-  "type": 0,
-  "nsp": "/admin",
-  "data": {
-    "token": "123"
-  }
-}
-```
+Example: `{ type: EVENT, namespace: "/", data: ["foo"] }` will be sent as `42["foo"]`
 
-is encoded to `0/admin,{"token":"123"}`
+- acknowledgement
 
-- `DISCONNECT` packet for the `/admin` namespace
+| Packet                                                                                   | Encoded                                                                      |
+|------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| `{ type: EVENT, namespace: "/", data: ["foo"], id: 12 }`                                 | `212["foo"]`                                                                 |
+| `{ type: ACK, namespace: "/", data: [], id: 12 }`                                        | `312[]`                                                                      |
+| `{ type: EVENT, namespace: "/admin", data: ["foo"], id: 13 }`                            | `2/admin,13["foo"]`                                                          |
+| `{ type: ACK, namespace: "/admin", data: ["bar"], id: 13 }`                              | `3/admin,13["bar"]`                                                          |
+| `{ type: BINARY_EVENT, namespace: "/", data: ["foo", <Buffer <01 02 03 04>> ], id: 14 }` | `51-14["foo",{"_placeholder":true,"num":0}]` <br/>+ `<Buffer <01 02 03 04>>` |
+| `{ type: ACK, namespace: "/", data: ["bar"], id: 14 }`                                   | `314["bar"]`                                                                 |
+| `{ type: EVENT, namespace: "/", data: ["foo" ], id: 15 }`                                | `215["foo"]`                                                                 |
+| `{ type: BINARY_ACK, namespace: "/", data: ["bar", <Buffer <01 02 03 04>>], id: 15 }`    | `61-15["bar",{"_placeholder":true,"num":0}]` <br/>+ `<Buffer <01 02 03 04>>` |
 
-```json
-{
-  "type": 1,
-  "nsp": "/admin"
-}
-```
+- disconnection from a namespace
 
-is encoded to `1/admin,`
+| Packet                                      | Encoded    |
+|---------------------------------------------|------------|
+| `{ type: DISCONNECT, namespace: "/" }`      | `1`        |
+| `{ type: DISCONNECT, namespace: "/admin" }` | `1/admin,` |
 
-- `EVENT` packet
-
-```json
-{
-  "type": 2,
-  "nsp": "/",
-  "data": ["hello", 1]
-}
-```
-
-is encoded to `2["hello",1]`
-
-- `EVENT` packet with an acknowledgement id
-
-```json
-{
-  "type": 2,
-  "nsp": "/admin",
-  "data": ["project:delete", 123],
-  "id": 456
-}
-```
-
-is encoded to `2/admin,456["project:delete",123]`
-
-- `ACK` packet
-
-```json
-{
-  "type": 3,
-  "nsp": "/admin",
-  "data": [],
-  "id": 456
-}
-```
-
-is encoded to `3/admin,456[]`
-
-- `CONNECT_ERROR` packet
-
-```json
-{
-  "type": 4,
-  "nsp": "/admin",
-  "data": {
-    "message": "Not authorized"
-  }
-}
-```
-
-is encoded to `4/admin,{"message":"Not authorized"}`
-
-- `BINARY_EVENT` packet
-
-```
-{
-  "type": 5,
-  "nsp": "/",
-  "data": ["hello", <Buffer 01 02 03>]
-}
-```
-
-is encoded to `51-["hello",{"_placeholder":true,"num":0}]` + `<Buffer 01 02 03>`
-
-- `BINARY_EVENT` packet with an acknowledgement id
-
-```
-{
-  "type": 5,
-  "nsp": "/admin",
-  "data": ["project:delete", <Buffer 01 02 03>],
-  "id": 456
-}
-```
-
-is encoded to `51-/admin,456["project:delete",{"_placeholder":true,"num":0}]` + `<Buffer 01 02 03>`
-
-- `BINARY_ACK` packet
-
-```
-{
-  "type": 6,
-  "nsp": "/admin",
-  "data": [<Buffer 03 02 01>],
-  "id": 456
-}
-```
-
-is encoded to `61-/admin,456[{"_placeholder":true,"num":0}]` + `<Buffer 03 02 01>`
 
 ## Sample session
 
