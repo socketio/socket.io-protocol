@@ -48,15 +48,23 @@ function waitForPackets(socket, count) {
   });
 }
 
+function decodePayload(payload) {
+  const firstColonIndex = payload.indexOf(":");
+  const length = payload.substring(0, firstColonIndex);
+  const packet = payload.substring(firstColonIndex + 1);
+  return [length, packet];
+}
+
 async function initLongPollingSession() {
-  const response = await fetch(`${URL}/socket.io/?EIO=4&transport=polling`);
-  const content = await response.text();
+  const response = await fetch(`${URL}/socket.io/?EIO=3&transport=polling`);
+  const text = await response.text();
+  const [, content] = decodePayload(text);
   return JSON.parse(content.substring(1)).sid;
 }
 
 async function initSocketIOConnection() {
   const socket = new WebSocket(
-    `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+    `${WS_URL}/socket.io/?EIO=3&transport=websocket`
   );
   socket.binaryType = "arraybuffer";
 
@@ -75,13 +83,15 @@ describe("Engine.IO protocol", () => {
     describe("HTTP long-polling", () => {
       it("should successfully open a session", async () => {
         const response = await fetch(
-          `${URL}/socket.io/?EIO=4&transport=polling`
+          `${URL}/socket.io/?EIO=3&transport=polling`
         );
 
         expect(response.status).to.eql(200);
 
-        const content = await response.text();
+        const text = await response.text();
+        const [length, content] = decodePayload(text);
 
+        expect(length).to.eql(content.length.toString());
         expect(content).to.startsWith("0");
 
         const value = JSON.parse(content.substring(1));
@@ -113,18 +123,18 @@ describe("Engine.IO protocol", () => {
       });
 
       it("should fail with an invalid 'transport' query parameter", async () => {
-        const response = await fetch(`${URL}/socket.io/?EIO=4`);
+        const response = await fetch(`${URL}/socket.io/?EIO=3`);
 
         expect(response.status).to.eql(400);
 
-        const response2 = await fetch(`${URL}/socket.io/?EIO=4&transport=abc`);
+        const response2 = await fetch(`${URL}/socket.io/?EIO=3&transport=abc`);
 
         expect(response2.status).to.eql(400);
       });
 
       it("should fail with an invalid request method", async () => {
         const response = await fetch(
-          `${URL}/socket.io/?EIO=4&transport=polling`,
+          `${URL}/socket.io/?EIO=3&transport=polling`,
           {
             method: "post",
           }
@@ -133,7 +143,7 @@ describe("Engine.IO protocol", () => {
         expect(response.status).to.eql(400);
 
         const response2 = await fetch(
-          `${URL}/socket.io/?EIO=4&transport=polling`,
+          `${URL}/socket.io/?EIO=3&transport=polling`,
           {
             method: "put",
           }
@@ -146,7 +156,7 @@ describe("Engine.IO protocol", () => {
     describe("WebSocket", () => {
       it("should successfully open a session", async () => {
         const socket = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+          `${WS_URL}/socket.io/?EIO=3&transport=websocket`
         );
 
         const { data } = await waitFor(socket, "message");
@@ -194,7 +204,7 @@ describe("Engine.IO protocol", () => {
       });
 
       it("should fail with an invalid 'transport' query parameter", async () => {
-        const socket = new WebSocket(`${WS_URL}/socket.io/?EIO=4`);
+        const socket = new WebSocket(`${WS_URL}/socket.io/?EIO=3`);
 
         if (isNodejs) {
           socket.on("error", () => {});
@@ -203,7 +213,7 @@ describe("Engine.IO protocol", () => {
         waitFor(socket, "close");
 
         const socket2 = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=abc`
+          `${WS_URL}/socket.io/?EIO=3&transport=abc`
         );
 
         if (isNodejs) {
@@ -223,25 +233,25 @@ describe("Engine.IO protocol", () => {
         const sid = await initLongPollingSession();
 
         for (let i = 0; i < 3; i++) {
+          const pushResponse = await fetch(
+            `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`,
+            {
+              method: "post",
+              body: "1:2",
+            }
+          );
+
+          expect(pushResponse.status).to.eql(200);
+
           const pollResponse = await fetch(
-            `${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`
+            `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
           );
 
           expect(pollResponse.status).to.eql(200);
 
           const pollContent = await pollResponse.text();
 
-          expect(pollContent).to.eql("2");
-
-          const pushResponse = await fetch(
-            `${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`,
-            {
-              method: "post",
-              body: "3",
-            }
-          );
-
-          expect(pushResponse.status).to.eql(200);
+          expect(pollContent).to.eql("1:3");
         }
       });
 
@@ -251,7 +261,7 @@ describe("Engine.IO protocol", () => {
         await sleep(PING_INTERVAL + PING_TIMEOUT);
 
         const pollResponse = await fetch(
-          `${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`
+          `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
         );
 
         expect(pollResponse.status).to.eql(400);
@@ -261,17 +271,17 @@ describe("Engine.IO protocol", () => {
     describe("WebSocket", () => {
       it("should send ping/pong packets", async () => {
         const socket = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+          `${WS_URL}/socket.io/?EIO=3&transport=websocket`
         );
 
         await waitFor(socket, "message"); // handshake
 
         for (let i = 0; i < 3; i++) {
+          socket.send("2");
+
           const { data } = await waitFor(socket, "message");
 
-          expect(data).to.eql("2");
-
-          socket.send("3");
+          expect(data).to.eql("3");
         }
 
         socket.close();
@@ -279,7 +289,7 @@ describe("Engine.IO protocol", () => {
 
       it("should close the session upon ping timeout", async () => {
         const socket = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+          `${WS_URL}/socket.io/?EIO=3&transport=websocket`
         );
 
         await waitFor(socket, "close"); // handshake
@@ -293,10 +303,10 @@ describe("Engine.IO protocol", () => {
         const sid = await initLongPollingSession();
 
         const [pollResponse] = await Promise.all([
-          fetch(`${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`),
-          fetch(`${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`, {
+          fetch(`${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`),
+          fetch(`${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`, {
             method: "post",
-            body: "1",
+            body: "1:1",
           }),
         ]);
 
@@ -304,10 +314,10 @@ describe("Engine.IO protocol", () => {
 
         const pullContent = await pollResponse.text();
 
-        expect(pullContent).to.eql("6");
+        expect(pullContent).to.eql("1:6");
 
         const pollResponse2 = await fetch(
-          `${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`
+          `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
         );
 
         expect(pollResponse2.status).to.eql(400);
@@ -317,7 +327,7 @@ describe("Engine.IO protocol", () => {
     describe("WebSocket", () => {
       it("should forcefully close the session", async () => {
         const socket = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+          `${WS_URL}/socket.io/?EIO=3&transport=websocket`
         );
 
         await waitFor(socket, "message"); // handshake
@@ -334,7 +344,7 @@ describe("Engine.IO protocol", () => {
       const sid = await initLongPollingSession();
 
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket&sid=${sid}`
       );
 
       await waitFor(socket, "open");
@@ -354,7 +364,7 @@ describe("Engine.IO protocol", () => {
       const sid = await initLongPollingSession();
 
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket&sid=${sid}`
       );
 
       await waitFor(socket, "open");
@@ -362,7 +372,7 @@ describe("Engine.IO protocol", () => {
       socket.send("5");
 
       const pollResponse = await fetch(
-        `${URL}/socket.io/?EIO=4&transport=polling&sid=${sid}`
+        `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
       );
 
       expect(pollResponse.status).to.eql(400);
@@ -372,7 +382,7 @@ describe("Engine.IO protocol", () => {
       const sid = await initLongPollingSession();
 
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket&sid=${sid}`
       );
 
       await waitFor(socket, "open");
@@ -380,7 +390,7 @@ describe("Engine.IO protocol", () => {
       socket.send("5");
 
       const socket2 = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket&sid=${sid}`
       );
 
       await waitFor(socket2, "close");
@@ -392,7 +402,7 @@ describe("Socket.IO protocol", () => {
   describe("connect", () => {
     it("should allow connection to the main namespace", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -415,7 +425,7 @@ describe("Socket.IO protocol", () => {
 
     it("should allow connection to the main namespace with a payload", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -438,7 +448,7 @@ describe("Socket.IO protocol", () => {
 
     it("should allow connection to a custom namespace", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -461,7 +471,7 @@ describe("Socket.IO protocol", () => {
 
     it("should allow connection to a custom namespace with a payload", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -484,7 +494,7 @@ describe("Socket.IO protocol", () => {
 
     it("should disallow connection to an unknown namespace", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -498,7 +508,7 @@ describe("Socket.IO protocol", () => {
 
     it("should disallow connection with an invalid handshake", async () => {
       const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
@@ -515,21 +525,17 @@ describe("Socket.IO protocol", () => {
 
       socket.send("41");
 
-      const { data } = await waitFor(socket, "message");
-
-      expect(data).to.eql("2");
+      await waitFor(socket, "close");
     });
 
     it("should connect then disconnect from a custom namespace", async () => {
       const socket = await initSocketIOConnection();
 
-      await waitFor(socket, "message"); // ping
-
       socket.send("40/custom");
-
+      
       await waitFor(socket, "message"); // Socket.IO handshake
       await waitFor(socket, "message"); // auth packet
-
+      
       socket.send("41/custom");
       socket.send('42["message","message to main namespace"]');
 
