@@ -68,12 +68,7 @@ async function initSocketIOConnection() {
   );
   socket.binaryType = "arraybuffer";
 
-  await waitFor(socket, "message"); // Engine.IO handshake
-
-  socket.send("40");
-
   await waitFor(socket, "message"); // Socket.IO handshake
-  await waitFor(socket, "message"); // "auth" packet
 
   return socket;
 }
@@ -251,7 +246,11 @@ describe("Engine.IO protocol", () => {
 
           const pollContent = await pollResponse.text();
 
-          expect(pollContent).to.eql("1:3");
+          if (i === 0) {
+            expect(pollContent).to.eql("2:401:3");
+          } else {
+            expect(pollContent).to.eql("1:3");
+          }
         }
       });
 
@@ -275,6 +274,7 @@ describe("Engine.IO protocol", () => {
         );
 
         await waitFor(socket, "message"); // handshake
+        await waitFor(socket, "message"); // connect
 
         for (let i = 0; i < 3; i++) {
           socket.send("2");
@@ -314,7 +314,7 @@ describe("Engine.IO protocol", () => {
 
         const pullContent = await pollResponse.text();
 
-        expect(pullContent).to.eql("1:6");
+        expect(pullContent).to.eql("2:40");
 
         const pollResponse2 = await fetch(
           `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
@@ -413,37 +413,9 @@ describe("Socket.IO protocol", () => {
 
       expect(data).to.startsWith("40");
 
-      const handshake = JSON.parse(data.substring(2));
+      const connectionPacket = await waitFor(socket, "message");
 
-      expect(handshake).to.have.all.keys("sid");
-      expect(handshake.sid).to.be.a("string");
-
-      const authPacket = await waitFor(socket, "message");
-
-      expect(authPacket.data).to.eql('42["auth",{}]');
-    });
-
-    it("should allow connection to the main namespace with a payload", async () => {
-      const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
-      );
-
-      await waitFor(socket, "message"); // Engine.IO handshake
-
-      socket.send('40{"token":"123"}');
-
-      const { data } = await waitFor(socket, "message");
-
-      expect(data).to.startsWith("40");
-
-      const handshake = JSON.parse(data.substring(2));
-
-      expect(handshake).to.have.all.keys("sid");
-      expect(handshake.sid).to.be.a("string");
-
-      const authPacket = await waitFor(socket, "message");
-
-      expect(authPacket.data).to.eql('42["auth",{"token":"123"}]');
+      expect(connectionPacket.data).to.eql('40');
     });
 
     it("should allow connection to a custom namespace", async () => {
@@ -457,40 +429,9 @@ describe("Socket.IO protocol", () => {
 
       const { data } = await waitFor(socket, "message");
 
-      expect(data).to.startsWith("40/custom,");
-
-      const handshake = JSON.parse(data.substring(10));
-
-      expect(handshake).to.have.all.keys("sid");
-      expect(handshake.sid).to.be.a("string");
-
-      const authPacket = await waitFor(socket, "message");
-
-      expect(authPacket.data).to.eql('42/custom,["auth",{}]');
+      expect(data).to.startsWith("40/custom");
     });
 
-    it("should allow connection to a custom namespace with a payload", async () => {
-      const socket = new WebSocket(
-        `${WS_URL}/socket.io/?EIO=3&transport=websocket`
-      );
-
-      await waitFor(socket, "message"); // Engine.IO handshake
-
-      socket.send('40/custom,{"token":"abc"}');
-
-      const { data } = await waitFor(socket, "message");
-
-      expect(data).to.startsWith("40/custom,");
-
-      const handshake = JSON.parse(data.substring(10));
-
-      expect(handshake).to.have.all.keys("sid");
-      expect(handshake.sid).to.be.a("string");
-
-      const authPacket = await waitFor(socket, "message");
-
-      expect(authPacket.data).to.eql('42/custom,["auth",{"token":"abc"}]');
-    });
 
     it("should disallow connection to an unknown namespace", async () => {
       const socket = new WebSocket(
