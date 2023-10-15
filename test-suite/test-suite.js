@@ -522,16 +522,16 @@ describe("Socket.IO protocol", () => {
       socket.send(
         '452-["message",{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]'
       );
-      socket.send(Uint8Array.from([1, 2, 3]));
-      socket.send(Uint8Array.from([4, 5, 6]));
+      socket.send(Uint8Array.from([4, 1, 2, 3]));
+      socket.send(Uint8Array.from([4, 4, 5, 6]));
 
       const packets = await waitForPackets(socket, 3);
 
       expect(packets[0]).to.eql(
         '452-["message-back",{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]'
       );
-      expect(packets[1]).to.eql(Uint8Array.from([1, 2, 3]).buffer);
-      expect(packets[2]).to.eql(Uint8Array.from([4, 5, 6]).buffer);
+      expect(packets[1]).to.eql(Uint8Array.from([4, 1, 2, 3]).buffer);
+      expect(packets[2]).to.eql(Uint8Array.from([4, 4, 5, 6]).buffer);
 
       socket.close();
     });
@@ -552,16 +552,16 @@ describe("Socket.IO protocol", () => {
       socket.send(
         '452-789["message-with-ack",{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]'
       );
-      socket.send(Uint8Array.from([1, 2, 3]));
-      socket.send(Uint8Array.from([4, 5, 6]));
+      socket.send(Uint8Array.from([4, 1, 2, 3]));
+      socket.send(Uint8Array.from([4, 4, 5, 6]));
 
       const packets = await waitForPackets(socket, 3);
 
       expect(packets[0]).to.eql(
         '462-789[{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]'
       );
-      expect(packets[1]).to.eql(Uint8Array.from([1, 2, 3]).buffer);
-      expect(packets[2]).to.eql(Uint8Array.from([4, 5, 6]).buffer);
+      expect(packets[1]).to.eql(Uint8Array.from([4, 1, 2, 3]).buffer);
+      expect(packets[2]).to.eql(Uint8Array.from([4, 4, 5, 6]).buffer);
 
       socket.close();
     });
