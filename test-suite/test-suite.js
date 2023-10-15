@@ -69,6 +69,8 @@ async function initSocketIOConnection() {
   socket.binaryType = "arraybuffer";
 
   await waitFor(socket, "message"); // Socket.IO handshake
+  await waitFor(socket, "message"); // Socket.IO / namespace handshake
+  await waitFor(socket, "message"); // auth packet
 
   return socket;
 }
@@ -247,7 +249,7 @@ describe("Engine.IO protocol", () => {
           const pollContent = await pollResponse.text();
 
           if (i === 0) {
-            expect(pollContent).to.eql("2:401:3");
+            expect(pollContent).to.eql(`2:4013:42["auth",{}]1:3`);
           } else {
             expect(pollContent).to.eql("1:3");
           }
@@ -275,6 +277,7 @@ describe("Engine.IO protocol", () => {
 
         await waitFor(socket, "message"); // handshake
         await waitFor(socket, "message"); // connect
+        await waitFor(socket, "message"); // ns auth echo
 
         for (let i = 0; i < 3; i++) {
           socket.send("2");
@@ -314,7 +317,7 @@ describe("Engine.IO protocol", () => {
 
         const pullContent = await pollResponse.text();
 
-        expect(pullContent).to.eql("2:40");
+        expect(pullContent).to.eql(`2:4013:42["auth",{}]`);
 
         const pollResponse2 = await fetch(
           `${URL}/socket.io/?EIO=3&transport=polling&sid=${sid}`
@@ -407,12 +410,12 @@ describe("Socket.IO protocol", () => {
 
       await waitFor(socket, "message"); // Engine.IO handshake
 
-      const { data } = await waitFor(socket, "message"); // Socket.IO / namespace handshake
-      expect(data).to.startsWith("40");
+      await waitFor(socket, "message"); // Socket.IO / namespace handshake
+      await waitFor(socket, "message"); // auth packet
 
       socket.send('42["message","message to main namespace"]');
-      const { data: echo } = await waitFor(socket, "message");
-      expect(echo).to.eql('42["message-back","message to main namespace"]');
+      const { data } = await waitFor(socket, "message");
+      expect(data).to.eql('42["message-back","message to main namespace"]');
     });
 
     it("should allow connection to a custom namespace", async () => {
@@ -421,6 +424,8 @@ describe("Socket.IO protocol", () => {
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
+      await waitFor(socket, "message"); // Socket.IO / namespace handshake
+      await waitFor(socket, "message"); // auth packet
 
       socket.send("40/custom,");
 
@@ -436,6 +441,8 @@ describe("Socket.IO protocol", () => {
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
+      await waitFor(socket, "message"); // Socket.IO / namespace handshake
+      await waitFor(socket, "message"); // auth packet
 
       socket.send("40/random");
 
@@ -450,6 +457,8 @@ describe("Socket.IO protocol", () => {
       );
 
       await waitFor(socket, "message"); // Engine.IO handshake
+      await waitFor(socket, "message"); // Socket.IO / namespace handshake
+      await waitFor(socket, "message"); // auth packet
 
       socket.send("4abc");
 
