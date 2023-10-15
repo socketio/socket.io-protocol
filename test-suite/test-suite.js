@@ -461,7 +461,7 @@ describe("Socket.IO protocol", () => {
 
       const { data } = await waitFor(socket, "message");
 
-      expect(data).to.eql('44/random,{"message":"Invalid namespace"}');
+      expect(data).to.eql('44/random,Invalid namespace');
     });
 
     it("should disallow connection with an invalid handshake", async () => {
