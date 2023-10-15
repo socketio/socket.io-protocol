@@ -37,12 +37,12 @@ async function waitFor(socket, eventType) {
 async function waitForPackets(socket, count) {
   const packets = [];
   if (isNodejs) {
-    for (let i = 0; i < count; i++) {
-      const data = await socket.iterator().next();
-      packets.push(data);
-      console.log("packet", data);
-    }
+    for await (const packet of socket.iterator()) {
+      packets.push(packet);
+      if (packets.length === count) {
     return packets;
+      }
+    }
   }
 
   return new Promise((resolve) => {
