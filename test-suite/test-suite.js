@@ -17,7 +17,12 @@ function sleep(delay) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
-function waitFor(socket, eventType) {
+async function waitFor(socket, eventType) {
+  if (eventType == "message" && isNodejs) {
+    const { value: data } = await socket.iterator().next();
+    return { data };
+  }
+
   return new Promise((resolve) => {
     socket.addEventListener(
       eventType,
@@ -29,8 +34,16 @@ function waitFor(socket, eventType) {
   });
 }
 
-function waitForPackets(socket, count) {
+async function waitForPackets(socket, count) {
   const packets = [];
+  if (isNodejs) {
+    for await (const packet of socket.iterator()) {
+      packets.push(packet);
+      if (packets.length === count) {
+        return packets;
+      }
+    }
+  }
 
   return new Promise((resolve) => {
     const handler = (event) => {
