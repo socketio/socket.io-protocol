@@ -17,7 +17,33 @@ function sleep(delay) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
+function createWebSocket(url) {
+  const socket = new WebSocket(url);
+  socket._messageBuffer = [];
+  socket._pendingPromises = [];
+
+  socket.onmessage = (ev) => {
+    if (socket._pendingPromises.length) {
+      socket._pendingPromises.shift()(ev);
+    } else {
+      socket._messageBuffer.push(ev);
+    }
+  };
+
+  return socket;
+}
+
 function waitFor(socket, eventType) {
+  if (eventType === "message") {
+    if (socket._messageBuffer.length) {
+      return Promise.resolve(socket._messageBuffer.shift());
+    } else {
+      return new Promise((resolve) => {
+        socket._pendingPromises.push(resolve);
+      });
+    }
+  }
+
   return new Promise((resolve) => {
     socket.addEventListener(
       eventType,
@@ -55,7 +81,7 @@ async function initLongPollingSession() {
 }
 
 async function initSocketIOConnection() {
-  const socket = new WebSocket(
+  const socket = createWebSocket(
     `${WS_URL}/socket.io/?EIO=4&transport=websocket`
   );
   socket.binaryType = "arraybuffer";
@@ -145,7 +171,7 @@ describe("Engine.IO protocol", () => {
 
     describe("WebSocket", () => {
       it("should successfully open a session", async () => {
-        const socket = new WebSocket(
+        const socket = createWebSocket(
           `${WS_URL}/socket.io/?EIO=4&transport=websocket`
         );
 
@@ -172,7 +198,7 @@ describe("Engine.IO protocol", () => {
       });
 
       it("should fail with an invalid 'EIO' query parameter", async () => {
-        const socket = new WebSocket(
+        const socket = createWebSocket(
           `${WS_URL}/socket.io/?transport=websocket`
         );
 
@@ -180,9 +206,9 @@ describe("Engine.IO protocol", () => {
           socket.on("error", () => {});
         }
 
-        waitFor(socket, "close");
+        await waitFor(socket, "close");
 
-        const socket2 = new WebSocket(
+        const socket2 = createWebSocket(
           `${WS_URL}/socket.io/?EIO=abc&transport=websocket`
         );
 
@@ -190,19 +216,19 @@ describe("Engine.IO protocol", () => {
           socket2.on("error", () => {});
         }
 
-        waitFor(socket2, "close");
+        await waitFor(socket2, "close");
       });
 
       it("should fail with an invalid 'transport' query parameter", async () => {
-        const socket = new WebSocket(`${WS_URL}/socket.io/?EIO=4`);
+        const socket = createWebSocket(`${WS_URL}/socket.io/?EIO=4`);
 
         if (isNodejs) {
           socket.on("error", () => {});
         }
 
-        waitFor(socket, "close");
+        await waitFor(socket, "close");
 
-        const socket2 = new WebSocket(
+        const socket2 = createWebSocket(
           `${WS_URL}/socket.io/?EIO=4&transport=abc`
         );
 
@@ -210,7 +236,7 @@ describe("Engine.IO protocol", () => {
           socket2.on("error", () => {});
         }
 
-        waitFor(socket2, "close");
+        await waitFor(socket2, "close");
       });
     });
   });
@@ -260,7 +286,7 @@ describe("Engine.IO protocol", () => {
 
     describe("WebSocket", () => {
       it("should send ping/pong packets", async () => {
-        const socket = new WebSocket(
+        const socket = createWebSocket(
           `${WS_URL}/socket.io/?EIO=4&transport=websocket`
         );
 
@@ -278,7 +304,7 @@ describe("Engine.IO protocol", () => {
       });
 
       it("should close the session upon ping timeout", async () => {
-        const socket = new WebSocket(
+        const socket = createWebSocket(
           `${WS_URL}/socket.io/?EIO=4&transport=websocket`
         );
 
@@ -316,7 +342,7 @@ describe("Engine.IO protocol", () => {
 
     describe("WebSocket", () => {
       it("should forcefully close the session", async () => {
-        const socket = new WebSocket(
+        const socket = createWebSocket(
           `${WS_URL}/socket.io/?EIO=4&transport=websocket`
         );
 
@@ -333,7 +359,7 @@ describe("Engine.IO protocol", () => {
     it("should successfully upgrade from HTTP long-polling to WebSocket", async () => {
       const sid = await initLongPollingSession();
 
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
       );
 
@@ -353,7 +379,7 @@ describe("Engine.IO protocol", () => {
     it("should ignore HTTP requests with same sid after upgrade", async () => {
       const sid = await initLongPollingSession();
 
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
       );
 
@@ -371,7 +397,7 @@ describe("Engine.IO protocol", () => {
     it("should ignore WebSocket connection with same sid after upgrade", async () => {
       const sid = await initLongPollingSession();
 
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
       );
 
@@ -379,7 +405,7 @@ describe("Engine.IO protocol", () => {
       socket.send("2probe");
       socket.send("5");
 
-      const socket2 = new WebSocket(
+      const socket2 = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
       );
 
@@ -391,7 +417,7 @@ describe("Engine.IO protocol", () => {
 describe("Socket.IO protocol", () => {
   describe("connect", () => {
     it("should allow connection to the main namespace", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -414,7 +440,7 @@ describe("Socket.IO protocol", () => {
     });
 
     it("should allow connection to the main namespace with a payload", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -437,7 +463,7 @@ describe("Socket.IO protocol", () => {
     });
 
     it("should allow connection to a custom namespace", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -460,7 +486,7 @@ describe("Socket.IO protocol", () => {
     });
 
     it("should allow connection to a custom namespace with a payload", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -483,7 +509,7 @@ describe("Socket.IO protocol", () => {
     });
 
     it("should disallow connection to an unknown namespace", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -497,7 +523,7 @@ describe("Socket.IO protocol", () => {
     });
 
     it("should disallow connection with an invalid handshake", async () => {
-      const socket = new WebSocket(
+      const socket = createWebSocket(
         `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
@@ -508,10 +534,9 @@ describe("Socket.IO protocol", () => {
       await waitFor(socket, "close");
     });
 
-    
     it("should close the connection if no handshake is received", async () => {
-      const socket = new WebSocket(
-          `${WS_URL}/socket.io/?EIO=4&transport=websocket`
+      const socket = createWebSocket(
+        `${WS_URL}/socket.io/?EIO=4&transport=websocket`
       );
 
       await waitFor(socket, "close");
